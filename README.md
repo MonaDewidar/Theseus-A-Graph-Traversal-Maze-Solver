@@ -76,7 +76,7 @@ It is built with Python and pygame. The only dependency is **pygame-ce**.
 | 🎬 **Step-by-step animation** | Ten speed levels, from 2 expanded cells per second up to *Instant*. Pause, resume or advance one step at a time. |
 | 🧱 **Random maze generator** | An iterative depth-first backtracker carves a perfect maze, then knocks out about 8% of the separating walls so there are several routes to choose from. |
 | ⚖️ **Weighted cells** | Toggle random weights, or paint them yourself. A weighted cell costs **15** to enter instead of 1, so you can see Dijkstra and A* route around them. |
-| ✏️ **Live editing** | Draw and erase walls, paint weights, and drag the start or end. Fast mouse drags are interpolated, so they never leave gaps. |
+| ✏️ **Live editing** | A toolbar above the maze with **Wall**, **Weight**, **Start**, **End** and **Erase** tools. You can also drag S and E directly. Fast mouse drags are interpolated, so they never leave gaps. |
 | 📊 **Live statistics** | Visited cells, frontier size, path length, path cost, percentage of the maze explored and pure algorithm compute time. |
 | 🏁 **Compare mode** | Runs every algorithm on the current maze and shows the results in a table, with the best value in each column highlighted. |
 | 💬 **Helpful feedback** | A colour-coded status bar, a cell inspector under the mouse, and a built-in shortcut reference (press **H**). |
@@ -139,15 +139,27 @@ py main.py
 | <kbd>Esc</kbd> | Close a dialog, or pause a running search |
 | <kbd>Ctrl</kbd> + <kbd>Q</kbd> | Quit |
 
-### Mouse
+### Mouse and editing tools
+
+Pick a tool in the **toolbar above the maze**, then click or drag on the maze with the left mouse button:
+
+| Tool | What the left mouse button does |
+|---|---|
+| ⬛ **Wall** *(default)* | Draws walls. If you start the drag on a wall, it erases walls instead. |
+| 🔷 **Weight** | Makes cells cost 15 to enter. If you start on a weighted cell, it removes weights instead. |
+| 🟩 **Start** | Puts the start on the cell you click. Clicking a wall opens that cell. |
+| 🟥 **End** | Puts the end on the cell you click. Clicking a wall opens that cell. |
+| ❌ **Erase** | Removes walls and weights. |
+
+These shortcuts work whichever tool is selected:
 
 | Gesture | Action |
 |---|---|
-| **Left drag** on an open cell | Draw walls |
-| **Left drag** starting on a wall | Erase walls |
 | **Right drag** | Erase walls and weights |
 | **Shift + left drag** | Paint weighted cells (or remove them, if you start on one) |
 | **Drag S or E** | Move the start or the end |
+
+While you hover over the maze, the outline takes the selected tool's colour. The Start and End tools also preview the letter, so you can see what a click will do.
 
 > [!TIP]
 > Editing the maze while a search is shown clears that search automatically, so the picture never mixes old results with a new maze.
@@ -182,8 +194,9 @@ py main.py
 
 **Maze area (right)**
 
-- A **legend** explains every colour, and a **status chip** shows the algorithm and its state (*Ready*, *Running*, *Paused*, *Path found* or *No path*).
-- The **maze** itself. Hovering a cell outlines it.
+- Above the maze, the **toolbar** (Wall, Weight, Start, End, Erase) chooses what the mouse does. A **status chip** on the right shows the algorithm and its state (*Ready*, *Running*, *Paused*, *Path found* or *No path*).
+- The **maze** itself. Hovering a cell outlines it in the colour of the selected tool.
+- Below the maze, a **legend** explains every colour, next to the maze size and the number of open cells.
 
 **Status bar (bottom)**
 
@@ -449,7 +462,7 @@ All tuning values are plain constants at the top of each file.
 The window size follows from these values:
 
 - **width** = `340 + COLS × CELL`
-- **height** = `max(80 + ROWS × CELL, 630) + 32`
+- **height** = `max(112 + ROWS × CELL, 640) + 32`
 
 The window never gets shorter than the sidebar needs. Keep `COLS × CELL` at about **620 or more** so the legend fits on one line.
 

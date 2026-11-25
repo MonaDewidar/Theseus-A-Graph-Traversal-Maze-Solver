@@ -53,7 +53,8 @@ GAP = 8
 BUTTON_H = 32
 SOLVE_H = 38
 PAD = 20
-LEGEND_H = 40
+TOOLBAR_H = 48  # Tool picker above the maze.
+LEGEND_H = 44  # Colour legend below the maze.
 STATUS_H = 32
 
 # Vertical positions of the sidebar sections (algorithm buttons are laid out two per row).
@@ -70,17 +71,17 @@ Y_SPEED_HEADER = Y_ROW_2 + BUTTON_H + 18
 Y_SLIDER = Y_SPEED_HEADER + 22
 Y_STATS_HEADER = Y_SLIDER + 30
 Y_STATS = Y_STATS_HEADER + 20
-TILE_H = 38
-TILE_GAP = 6
+TILE_H = 40
+TILE_GAP = 8
 SIDEBAR_MIN_H = Y_STATS + 3 * TILE_H + 2 * TILE_GAP + 12
 
 # The window fits the maze, but never gets shorter than the sidebar content.
 GRID_X = SIDEBAR_W + PAD
-GRID_Y = PAD + LEGEND_H
+GRID_Y = PAD + TOOLBAR_H
 GRID_W = COLS * CELL
 GRID_H = ROWS * CELL
 WIDTH = GRID_X + GRID_W + PAD
-HEIGHT = max(GRID_Y + GRID_H + PAD, SIDEBAR_MIN_H) + STATUS_H
+HEIGHT = max(GRID_Y + GRID_H + LEGEND_H, SIDEBAR_MIN_H) + STATUS_H
 SIDEBAR_H = HEIGHT - STATUS_H
 
 # Animation speed levels, in expanded cells per second (None = instant).
@@ -196,16 +197,32 @@ HELP_KEYS = (
 )
 
 HELP_MOUSE = (
-    ("Left drag", "Draw or erase walls"),
+    ("Left drag", "Use the selected tool"),
     ("Right drag", "Erase walls and weights"),
     ("Shift + drag", f"Paint weights (cost {DEFAULT_WEIGHT})"),
     ("Drag S / E", "Move the start or end"),
 )
 
 HELP_TIP = (
-    "Editing the maze clears the current search. Weighted cells only change "
-    "the result of Dijkstra and A*; BFS and DFS count every move as 1."
+    "Pick Wall, Weight, Start, End or Erase in the toolbar above the maze. Editing the "
+    "maze clears the current search. Weights only change the result of Dijkstra and A*; "
+    "BFS and DFS count every move as 1."
 )
+
+# Editing tools shown above the maze: (key, label, message shown when it is selected).
+TOOLS = (
+    ("wall", "Wall", "Wall tool: drag to draw walls. Start on a wall to erase instead."),
+    (
+        "weight",
+        "Weight",
+        f"Weight tool: drag to make cells cost {DEFAULT_WEIGHT}. "
+        "Start on a weighted cell to remove weights.",
+    ),
+    ("start", "Start", "Start tool: click any cell to put the start there."),
+    ("end", "End", "End tool: click any cell to put the end there."),
+    ("erase", "Erase", "Erase tool: drag to remove walls and weights."),
+)
+TOOL_LABELS = {key: label for key, label, _ in TOOLS}
 
 CompareResult = namedtuple("CompareResult", "name visited length cost millis error")
 
@@ -395,6 +412,7 @@ class App:
 
         self.status_text = ""
         self.status_level = "info"
+        self.tool = TOOLS[0][0]
         self.edit_mode = None
         self.edit_button = None
         self.last_edit_cell = None
@@ -454,8 +472,22 @@ class App:
             self.clear_board,
         )
 
+        # Tool picker above the maze: a row of buttons sized to their labels.
+        self.tool_buttons = {}
+        tool_x = GRID_X + self.fonts.label.size("TOOL")[0] + 14
+        for key, label, _ in TOOLS:
+            width = self.fonts.button.size(label)[0] + 18 + 26
+            button = Button(
+                (tool_x, PAD, width, BUTTON_H), label, lambda k=key: self.select_tool(k)
+            )
+            button.icon = key
+            self.tool_buttons[key] = button
+            tool_x += width + 6
+        self.toolbar_right = tool_x
+
         self.buttons = [
             *self.algo_buttons.values(),
+            *self.tool_buttons.values(),
             self.solve_button,
             self.step_button,
             self.reset_button,
@@ -724,6 +756,8 @@ class App:
     def _refresh_widgets(self):
         for name, button in self.algo_buttons.items():
             button.selected = name == self.algorithm
+        for key, button in self.tool_buttons.items():
+            button.selected = key == self.tool
         self.weights_button.selected = self.weighted
         self.step_button.enabled = self.state != RUNNING
         self.reset_button.enabled = self.state != IDLE
@@ -895,26 +929,56 @@ class App:
             return None
         return self.grid.get_cell((y - GRID_Y) // CELL, (x - GRID_X) // CELL)
 
+    def select_tool(self, key):
+        for tool_key, _, message in TOOLS:
+            if tool_key == key:
+                self.tool = key
+                self.set_status(message)
+                return
+        self.set_status(f"Unknown tool: {key}", "error")
+
     def _begin_edit(self, cell, mouse_button):
         grid = self.grid
-        if mouse_button == 1 and cell is grid.start:
+        placing = mouse_button == 1 and self.tool in ("start", "end")
+        interior = grid.is_interior(cell.row, cell.col)
+
+        if placing:
+            mode = MOVE_START if self.tool == "start" else MOVE_END
+            other = grid.end if mode == MOVE_START else grid.start
+            if not interior:
+                self.set_status("The outer border of the maze cannot be edited.")
+                return
+            if cell is other:
+                self.set_status("The start and the end need different cells.", "warning")
+                return
+        elif mouse_button == 1 and cell is grid.start:
             mode = MOVE_START
         elif mouse_button == 1 and cell is grid.end:
             mode = MOVE_END
-        elif not grid.is_interior(cell.row, cell.col):
+        elif not interior:
             self.set_status("The outer border of the maze cannot be edited.")
             return
-        elif mouse_button == 3:
+        elif mouse_button == 3 or self.tool == "erase":
             mode = ERASE
-        elif pygame.key.get_mods() & pygame.KMOD_SHIFT:
+        elif self.tool == "weight" or pygame.key.get_mods() & pygame.KMOD_SHIFT:
             mode = REMOVE_WEIGHT if cell.weight > 1 else PAINT_WEIGHT
+            if cell.is_wall:
+                self.set_status("Weights go on open cells. Erase the wall first.")
         else:
             mode = ERASE if cell.is_wall else DRAW_WALL
 
         self.edit_mode = mode
         self.edit_button = mouse_button
         self.last_edit_cell = cell
-        self._apply_edit(cell)
+
+        if placing:
+            if cell.is_wall:  # Placing the start or end on a wall opens that cell.
+                cell.is_wall, cell.weight = False, 1
+            self._apply_edit(cell)
+            name = "Start" if mode == MOVE_START else "End"
+            self.set_status(f"{name} placed at row {cell.row}, column {cell.col}.", "success")
+        else:
+            self._apply_edit(cell)
 
     def _continue_edit(self, cell):
         if self.edit_mode in (MOVE_START, MOVE_END):
@@ -978,8 +1042,9 @@ class App:
         mouse = pygame.mouse.get_pos()
         self.screen.fill(Color.BG)
         self._draw_sidebar(mouse)
-        self._draw_legend()
+        self._draw_toolbar(mouse)
         self._draw_grid(mouse)
+        self._draw_legend()
         self._draw_status_bar(mouse)
         if self.overlay == "help":
             self._draw_help(mouse)
@@ -1096,7 +1161,7 @@ class App:
 
         font = self.fonts.button_bold if button.primary else self.fonts.button
         label = self.texts.render(font, button.label, foreground)
-        icon_width = 16 if button.icon else 0
+        icon_width = 18 if button.icon else 0
         left = rect.centerx - (icon_width + label.get_width()) // 2
         if button.icon:
             self._draw_icon(button.icon, left, rect.centery, foreground)
@@ -1120,6 +1185,8 @@ class App:
         elif icon == "pause":
             self.screen.fill(color, (x, center_y - 6, 3, 12))
             self.screen.fill(color, (x + 6, center_y - 6, 3, 12))
+        else:
+            self._draw_swatch(icon, pygame.Rect(x, center_y - 6, 12, 12))
 
     def _draw_slider(self, mouse):
         slider = self.slider
@@ -1200,15 +1267,20 @@ class App:
             "path": Color.PATH,
             "wall": Color.WALL,
             "weight": Color.FLOOR,
+            "erase": Color.FLOOR,
         }
-        pygame.draw.rect(screen, fills[kind], rect, border_radius=4)
+        pygame.draw.rect(screen, fills.get(kind, Color.FLOOR), rect, border_radius=4)
         if kind == "wall":
             pygame.draw.rect(screen, Color.BORDER, rect, width=1, border_radius=4)
         elif kind == "weight":
             self._draw_weight_marker(rect, Color.WEIGHT)
+        elif kind == "erase":
+            inset = rect.inflate(-6, -6)
+            pygame.draw.line(screen, Color.ERROR, inset.topleft, inset.bottomright, 2)
+            pygame.draw.line(screen, Color.ERROR, inset.bottomleft, inset.topright, 2)
 
     def _draw_legend(self):
-        center_y = PAD + (LEGEND_H - 10) // 2
+        center_y = GRID_Y + GRID_H + (7 + LEGEND_H) // 2
         x = GRID_X
         for label, kind in LEGEND:
             self._draw_swatch(kind, pygame.Rect(x, center_y - 7, 14, 14))
@@ -1217,11 +1289,33 @@ class App:
             )
             x = text_rect.right + 18
 
+        info = f"{ROWS} × {COLS} maze  ·  {self.open_cells:,} open cells"
+        if self.fonts.small.size(info)[0] < GRID_X + GRID_W - x:
+            self._text(self.fonts.small, info, Color.DIM, (GRID_X + GRID_W, center_y), "midright")
+
+    def _tool_color(self):
+        if self.tool == "wall" and pygame.key.get_mods() & pygame.KMOD_SHIFT:
+            return Color.WEIGHT
+        colors = {
+            "wall": Color.HOVER,
+            "weight": Color.WEIGHT,
+            "start": Color.START,
+            "end": Color.END,
+            "erase": Color.ERROR,
+        }
+        return colors.get(self.tool, Color.HOVER)
+
+    def _draw_toolbar(self, mouse):
+        center_y = PAD + BUTTON_H // 2
+        self._text(self.fonts.label, "TOOL", Color.DIM, (GRID_X, center_y), "midleft")
+        for button in self.tool_buttons.values():
+            self._draw_button(button, mouse)
+
         label, color = self._state_label()
         text = self.texts.render(self.fonts.small_bold, f"{self.algorithm}  ·  {label}", color)
         chip = pygame.Rect(0, 0, text.get_width() + 34, 26)
         chip.midright = (GRID_X + GRID_W, center_y)
-        if chip.left > x:
+        if chip.left > self.toolbar_right + 12:
             pygame.draw.rect(self.screen, mix(Color.BG, color, 0.10), chip, border_radius=13)
             pygame.draw.rect(
                 self.screen, mix(Color.BG, color, 0.40), chip, width=1, border_radius=13
@@ -1274,11 +1368,16 @@ class App:
 
         if not self.overlay and self.edit_mode is None:
             cell = self._cell_at(mouse)
-            if cell is not None and (self.grid.is_interior(cell.row, cell.col)):
+            if cell is not None and self.grid.is_interior(cell.row, cell.col):
                 rect = pygame.Rect(
                     GRID_X + cell.col * CELL, GRID_Y + cell.row * CELL, CELL + 1, CELL + 1
                 )
-                pygame.draw.rect(screen, Color.HOVER, rect, width=2, border_radius=3)
+                color = self._tool_color()
+                pygame.draw.rect(screen, color, rect, width=2, border_radius=3)
+                is_endpoint = cell is self.grid.start or cell is self.grid.end
+                if self.tool in ("start", "end") and not is_endpoint:
+                    letter = "S" if self.tool == "start" else "E"
+                    self._text(self.fonts.cell, letter, color, rect.center, "center")
 
     def _draw_endpoint(self, cell, color, letter):
         rect = pygame.Rect(
@@ -1290,7 +1389,8 @@ class App:
     def _hover_description(self, mouse):
         cell = self._cell_at(mouse)
         if cell is None or self.overlay:
-            return "Left drag: walls  ·  Right drag: erase  ·  Shift: weights  ·  H: help"
+            tool = TOOL_LABELS.get(self.tool, "Wall")
+            return f"Tool: {tool}  ·  Right drag: erase  ·  Drag S / E to move  ·  H: help"
         if cell is self.grid.start:
             kind = "Start (drag to move)"
         elif cell is self.grid.end:
