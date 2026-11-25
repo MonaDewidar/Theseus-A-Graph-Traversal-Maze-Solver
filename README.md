@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="docs/logo.png" width="88" alt="Theseus logo">
-
 # Theseus
 
 ### An interactive graph-traversal maze solver
@@ -310,7 +308,7 @@ Theseus/
 ├── Algorithms.py         # bfs, dfs, dijkstra, a_star, build_path, path_cost, ALGORITHMS
 ├── Grid.py               # Cell and Grid: the data model
 ├── Maze_Generation.py    # maze carving, loop openings, random weights
-├── docs/                 # logo, screenshots and demo GIF used by this README
+├── docs/                 # screenshots and demo GIF used by this README
 └── README.md
 ```
 
