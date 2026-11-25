@@ -56,18 +56,11 @@ PAD = 20
 LEGEND_H = 40
 STATUS_H = 32
 
-GRID_X = SIDEBAR_W + PAD
-GRID_Y = PAD + LEGEND_H
-GRID_W = COLS * CELL
-GRID_H = ROWS * CELL
-WIDTH = GRID_X + GRID_W + PAD
-HEIGHT = GRID_Y + GRID_H + PAD + STATUS_H
-SIDEBAR_H = HEIGHT - STATUS_H
-
-# Vertical positions of the sidebar sections.
+# Vertical positions of the sidebar sections (algorithm buttons are laid out two per row).
+ALGO_ROWS = max(1, (len(ALGORITHMS) + 1) // 2)
 Y_ALGO_HEADER = 84
 Y_ALGO_BUTTONS = Y_ALGO_HEADER + 20
-Y_DESCRIPTION = Y_ALGO_BUTTONS + 2 * BUTTON_H + GAP + 12
+Y_DESCRIPTION = Y_ALGO_BUTTONS + ALGO_ROWS * (BUTTON_H + GAP) + 4
 Y_TAGS = Y_DESCRIPTION + 40
 Y_CONTROLS_HEADER = Y_TAGS + 36
 Y_SOLVE = Y_CONTROLS_HEADER + 20
@@ -79,6 +72,16 @@ Y_STATS_HEADER = Y_SLIDER + 30
 Y_STATS = Y_STATS_HEADER + 20
 TILE_H = 38
 TILE_GAP = 6
+SIDEBAR_MIN_H = Y_STATS + 3 * TILE_H + 2 * TILE_GAP + 12
+
+# The window fits the maze, but never gets shorter than the sidebar content.
+GRID_X = SIDEBAR_W + PAD
+GRID_Y = PAD + LEGEND_H
+GRID_W = COLS * CELL
+GRID_H = ROWS * CELL
+WIDTH = GRID_X + GRID_W + PAD
+HEIGHT = max(GRID_Y + GRID_H + PAD, SIDEBAR_MIN_H) + STATUS_H
+SIDEBAR_H = HEIGHT - STATUS_H
 
 # Animation speed levels, in expanded cells per second (None = instant).
 SPEED_STEPS = (2, 5, 10, 20, 40, 80, 160, 320, 640, None)
@@ -186,7 +189,7 @@ HELP_KEYS = (
     ("W", "Toggle random weights"),
     ("X", "Clear the board"),
     ("C", "Compare all algorithms"),
-    ("1 - 4", "Choose an algorithm"),
+    (f"1 - {min(9, len(ALGORITHMS))}", "Choose an algorithm"),
     ("+ / -", "Faster / slower"),
     ("H", "Show this help"),
     ("Esc", "Close dialog / pause"),
@@ -1390,9 +1393,10 @@ class App:
         )
 
     def _draw_compare(self, mouse):
+        row_h = 36
         card = self._begin_overlay(
             620,
-            318,
+            174 + row_h * len(self.compare_results),
             "Algorithm comparison",
             "Every algorithm run on the current maze without animation.",
             mouse,
@@ -1419,7 +1423,6 @@ class App:
         def styled(value, best):
             return Color.SUCCESS if best is not None and value == best else Color.TEXT
 
-        row_h = 36
         for index, result in enumerate(self.compare_results):
             row = pygame.Rect(
                 card.x + 16, header_y + 22 + index * row_h, card.width - 32, row_h - 4
